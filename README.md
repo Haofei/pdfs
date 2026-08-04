@@ -1,7 +1,21 @@
-### 📚 Browse the collection: **[tpn.github.io/pdfs](https://tpn.github.io/pdfs/)**
+<div align="center">
 
-Instant search across every document, topic & year filters, first-page
-thumbnails, and direct download links — no more truncated file listing.
+## 📚 Browse the collection: [tpn.github.io/pdfs](https://tpn.github.io/pdfs/)
+
+**Instant search across all ~1,900 documents · topic, year & type filters ·
+first-page thumbnails · direct download links**
+
+*(GitHub truncates the file listing below at 1,000 entries — the site indexes everything.)*
+
+<a href="https://tpn.github.io/pdfs/">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".site/screenshot-dark.webp">
+  <img src=".site/screenshot-light.webp" width="830"
+       alt="The browsing site: search box, topic filter chips, a documents-per-year histogram, and a grid of first-page thumbnails">
+</picture>
+</a>
+
+</div>
 
 ---
 
