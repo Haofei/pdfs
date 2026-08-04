@@ -1,0 +1,118 @@
+# Builds and deploys https://tpn.github.io/pdfs/ on every push to master.
+#
+# The repo is ~4.4 GB of PDFs, so the build NEVER checks out blobs:
+#   * sources come from a blobless sparse checkout of .site/ (<1 MB transfer)
+#   * per-file sizes/SHAs come from one Trees API request (git trees carry no
+#     sizes, so `git ls-tree -l` on a blobless clone would lazy-fetch every
+#     blob -- do not "simplify" back to that)
+#   * first-page thumbnails are content-addressed by blob SHA and cached on
+#     the orphan `thumbnails` branch; only PDFs new to that cache are
+#     downloaded (individually, over raw.githubusercontent.com) and rendered.
+
+name: site
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    paths: ['.site/**', '.github/workflows/site.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # refresh the `thumbnails` branch
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout site sources (blobless, sparse)
+        uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout: .site
+
+      - name: Run parser tests
+        run: python3 .site/test_parser.py
+
+      - name: Fetch repo tree with sizes (Trees API)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api "repos/${GITHUB_REPOSITORY}/git/trees/${GITHUB_SHA}?recursive=1" > "${RUNNER_TEMP}/tree.json"
+
+      - name: Generate manifest and assemble site
+        run: |
+          python3 .site/generate_manifest.py \
+            --tree-json "${RUNNER_TEMP}/tree.json" \
+            --commit "${GITHUB_SHA}" \
+            --assemble _site --report
+
+      - name: Restore thumbnail cache (orphan branch)
+        id: thumbs-restore
+        continue-on-error: true   # first run: branch does not exist yet
+        uses: actions/checkout@v4
+        with:
+          ref: thumbnails
+          path: thumbs-store
+
+      - name: Render thumbnails for new PDFs
+        if: github.event_name != 'pull_request'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends poppler-utils python3-pil
+          mkdir -p thumbs-store
+          python3 .site/generate_thumbnails.py \
+            --manifest _site/manifest.json \
+            --out thumbs-store \
+            --fetch-base "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}"
+
+      - name: Push refreshed thumbnails branch
+        if: github.ref == 'refs/heads/master'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd thumbs-store
+          # Only push when the cache actually changed (or didn't exist).
+          if [ -d .git ] && [ -z "$(git status --porcelain)" ]; then
+            echo "thumbnail cache unchanged; skipping push"
+            exit 0
+          fi
+          rm -rf .git
+          git init -q -b thumbnails
+          git add -A
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -q -m "Thumbnails as of ${GITHUB_SHA}"
+          git push --force \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}" \
+            thumbnails
+
+      - name: Add thumbnails to site
+        run: |
+          mkdir -p _site/thumbs
+          if compgen -G 'thumbs-store/*.webp' > /dev/null; then
+            cp thumbs-store/*.webp _site/thumbs/
+          fi
+          du -sh _site
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    if: github.ref == 'refs/heads/master'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

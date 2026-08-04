@@ -1,3 +1,10 @@
+### 📚 Browse the collection: **[tpn.github.io/pdfs](https://tpn.github.io/pdfs/)**
+
+Instant search across every document, topic & year filters, first-page
+thumbnails, and direct download links — no more truncated file listing.
+
+---
+
 A veritable mish-mash of technically-oriented PDFs I've collected over the
 years.  All content copyright the respective author(s).
 
